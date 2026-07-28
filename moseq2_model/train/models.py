@@ -174,14 +174,28 @@ def ARHMM(
         if not silent:
             flush_print(f"Adding data from key {data_name}")
         if separate_trans:
-            # Optionally add data with corresponding group for separate transition graphs
-            if groups[data_name] != "n/a":
-                if not silent:
-                    flush_print(f"Group ID: {groups[data_name]}")
-                model.add_data(data, group_id=groups[data_name])
+            # Optionally add data with corresponding group for separate transition graphs.
+            # Every session must be added: the saved labels come from
+            # model.states_list, but train_list is built from all training uuids,
+            # so silently skipping a session shifts the label/uuid pairing for
+            # every session after it -- each animal would be assigned another
+            # animal's syllable sequence.
+            if groups[data_name] == "n/a":
+                warnings.warn(
+                    f'Session {data_name} has no group assigned ("n/a") and is '
+                    'being modeled with that as its group id. Assign real groups '
+                    'via the index file to get separate transition matrices.')
+            if not silent:
+                flush_print(f"Group ID: {groups[data_name]}")
+            model.add_data(data, group_id=groups[data_name])
         else:
             # Load data without group, yielding single transition graph
             model.add_data(data)
+
+    if len(model.states_list) != len(data_dict):
+        raise RuntimeError(
+            f'Model holds {len(model.states_list)} sessions but {len(data_dict)} '
+            'were supplied; saved labels would not line up with the session list.')
 
     # initialize states per SL's recommendation
     if sticky_init:

@@ -59,6 +59,13 @@ def modeling_parameters(function):
         help="Random seed for holding out data (set for reproducibility)",
     )(function)
     function = click.option(
+        "--seed",
+        type=int,
+        default=-1,
+        help="Random seed for the Gibbs sampler; set it (>= 0) to make a model fit "
+             "reproducible. Also used for the hold-out split unless --hold-out-seed is given.",
+    )(function)
+    function = click.option(
         "--nfolds", type=int, default=5, help="Number of folds for split"
     )(function)
     function = click.option(
