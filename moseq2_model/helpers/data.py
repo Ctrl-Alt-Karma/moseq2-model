@@ -9,6 +9,7 @@ import itertools
 import numpy as np
 import ruamel.yaml as yaml
 import matplotlib.pyplot as plt
+from functools import partial
 from cytoolz import pluck, curried
 from collections import OrderedDict
 from os.path import join, exists, dirname
@@ -214,8 +215,13 @@ def prepare_model_metadata(data_dict, data_metadata, config_data):
         _, whitening_parameters = whiten_all(train_only)
         mu, L, offset = (whitening_parameters['mu'], whitening_parameters['L'],
                          whitening_parameters['offset'])
+        # np.require mirrors whiten_all's own `contig` step: solve() on a
+        # transposed array returns an F-contiguous result, and float32 PC scores
+        # would otherwise stay float32 instead of being upcast as upstream does.
+        contig = partial(np.require, dtype=np.float64, requirements="C")
         data_dict = OrderedDict(
-            (k, np.linalg.solve(L, (v - mu).T).T + offset) for k, v in data_dict.items())
+            (k, contig(np.linalg.solve(L, (v - mu).T).T + offset))
+            for k, v in data_dict.items())
     elif config_data["whiten"][0].lower() == "e":
         click.echo("Whitening the training data using the whiten_each function")
         # in this case, whitening_parameters is a dictionary of parameters
