@@ -6,6 +6,8 @@ import os
 import sys
 import glob
 import click
+import random
+import warnings
 import numpy as np
 from copy import deepcopy
 from cytoolz import valmap
@@ -70,6 +72,24 @@ def learn_model_wrapper(input_file, dest_file, config_data):
         os.makedirs(checkpoint_path, exist_ok=True)
 
     click.echo("Entering modeling training")
+
+    # Seed the global RNGs that pyhsmm samples from. Without this the Gibbs
+    # sweeps, AR/transition resampling and initialization all draw from an
+    # unseeded global stream, so re-running the identical command on identical
+    # inputs produced different syllable labels -- making every downstream
+    # statistic irreproducible and confounding kappa scans with sampler noise.
+    seed = config_data.get("seed", -1)
+    if seed is not None and seed >= 0:
+        click.echo(f"Setting random seed to {seed}")
+        np.random.seed(seed)
+        random.seed(seed)
+        # tie the hold-out split to the same seed unless one was set explicitly
+        if config_data.get("hold_out_seed", -1) < 0:
+            config_data["hold_out_seed"] = seed
+    else:
+        warnings.warn(
+            "No --seed given: this model fit is not reproducible. Re-running the "
+            "same command will produce different syllable labels.")
 
     run_parameters = deepcopy(config_data)
 
@@ -189,7 +209,12 @@ def learn_model_wrapper(input_file, dest_file, config_data):
     export_dict = {
         "loglikes": loglikes,
         "labels": labels,
-        "keys": all_keys,
+        # 'keys' must index the labels. all_keys is every session in PCA order,
+        # but labels follow model.states_list, i.e. train_list order -- under
+        # --hold-out they differ in both length and order, so zipping labels
+        # with all_keys paired sessions with other animals' syllable sequences.
+        "keys": train_list,
+        "all_keys": all_keys,
         "heldout_ll": heldout_ll,
         "model_parameters": save_parameters,
         "run_parameters": run_parameters,

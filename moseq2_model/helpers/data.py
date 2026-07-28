@@ -200,12 +200,22 @@ def prepare_model_metadata(data_dict, data_metadata, config_data):
     if config_data["separate_trans"]:
         model_parameters["groups"] = {k: data_metadata["groups"][k] for k in train}
 
-    # Whiten the data
+    # Whiten the data.
+    # For whiten_all the transform must be estimated from the TRAINING sessions
+    # only. Estimating it over every session let the held-out fold contribute to
+    # the mean and covariance it is later scored under, which optimistically
+    # biased the held-out likelihood -- the very number used to compare kappas
+    # and pick a model.
     whitening_parameters = None
     if config_data["whiten"][0].lower() == "a":
         click.echo("Whitening the training data using the whiten_all function")
         # in this case, whitening_parameters is a single tuple
-        data_dict, whitening_parameters = whiten_all(data_dict)
+        train_only = OrderedDict((k, data_dict[k]) for k in train)
+        _, whitening_parameters = whiten_all(train_only)
+        mu, L, offset = (whitening_parameters['mu'], whitening_parameters['L'],
+                         whitening_parameters['offset'])
+        data_dict = OrderedDict(
+            (k, np.linalg.solve(L, (v - mu).T).T + offset) for k, v in data_dict.items())
     elif config_data["whiten"][0].lower() == "e":
         click.echo("Whitening the training data using the whiten_each function")
         # in this case, whitening_parameters is a dictionary of parameters
@@ -256,15 +266,23 @@ def get_training_data_splits(split_frac, data_dict):
     validation_data (OrderedDict): the split percentage of the validation data
     """
 
+    if not 0 < split_frac < 1:
+        raise ValueError(
+            'split_frac must be strictly between 0 and 1 (percent_split is the '
+            f'percentage of each session used for TRAINING); got {split_frac}.')
+
     training_data = OrderedDict()
     validation_data = OrderedDict()
 
     for k, v in data_dict.items():
-        # Splitting data by test set
-        training_X, testing_X = (
-            v[: int(len(v) * split_frac)],
-            v[-int(len(v) * split_frac) :],
-        )
+        # Split each session into a training prefix and the remaining validation
+        # suffix. Both slices previously used the same fraction, so the training
+        # set was truncated to split_frac of every session -- discarding the rest
+        # entirely when split_frac < 0.5 -- and for split_frac > 0.5 the two
+        # windows overlapped, so the "validation" likelihood was computed largely
+        # on frames the model had trained on.
+        n_train = int(len(v) * split_frac)
+        training_X, testing_X = v[:n_train], v[n_train:]
 
         # Setting training data key-value pair
         training_data[k] = training_X

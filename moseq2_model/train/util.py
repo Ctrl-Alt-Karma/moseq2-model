@@ -132,7 +132,12 @@ def regularize_for_stability(obs_distns, obs_stats):
         print(f'Regularized S params for state {i}: {min_eigenvalue_S:.2e} → {final_min_eigenvalue_S:.2e} (ridge regression coeff = {regularization:.2e})')
         print(f'Regularized C params for state {i}: {min_eigenvalue_C:.2e} → {final_min_eigenvalue_C:.2e}')
         print(f'Regularized inv_C (K) params for state {i}: {min_eigenvalue_inv_C:.2e} → {final_min_eigenvalue_inv_C:.2e}')
-        obs.natural_hypparam[2] = C + regularization * np.eye(C.shape[0])
+        # Regularize the PRIOR only. `C` here is natural_hypparam[2] + statmat[2],
+        # i.e. prior plus the data sufficient statistics, so writing it back into
+        # natural_hypparam folded the data into the prior permanently: the next
+        # resample saw prior + 2*stats, double-counting the data, and that state's
+        # dynamics prior stayed corrupted for the rest of training.
+        obs.natural_hypparam[2] = obs.natural_hypparam[2] + regularization * np.eye(C.shape[0])
 
 def train_model(
     model,

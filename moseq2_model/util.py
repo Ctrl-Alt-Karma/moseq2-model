@@ -587,6 +587,27 @@ def get_parameter_strings(config_data):
     if config_data["ncpus"] > 0:
         parameters += f'--ncpus {config_data["ncpus"]} '
 
+    # Forward the remaining modeling parameters. These were previously dropped,
+    # so every model in a kappa scan was silently fit with the CLI defaults
+    # (nlags=3, whiten='all', alpha=5.7, gamma=1e3, var_name='scores') no matter
+    # what the user configured, and a non-default var_name made the generated
+    # commands fail outright.
+    forwarded = (
+        ('nlags', '--nlags'),
+        ('whiten', '--whiten'),
+        ('alpha', '--alpha'),
+        ('gamma', '--gamma'),
+        ('var_name', '--var-name'),
+        ('hold_out_seed', '--hold-out-seed'),
+        ('seed', '--seed'),
+        ('noise_level', '--noise-level'),
+        ('percent_split', '--percent-split'),
+    )
+    for key, flag in forwarded:
+        value = config_data.get(key)
+        if value is not None:
+            parameters += f'{flag} {value} '
+
     # Handle possible Slurm batch functionality
     prefix = ""
     if config_data["cluster_type"] == "slurm":
