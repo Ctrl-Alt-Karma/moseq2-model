@@ -9,6 +9,8 @@ import click
 import joblib
 import scipy.io
 import warnings
+import datetime
+import subprocess
 import numpy as np
 from copy import deepcopy
 from cytoolz import first
@@ -16,6 +18,58 @@ from collections import OrderedDict
 from moseq2_model.train.models import ARHMM
 from autoregressive.util import AR_striding
 from os.path import basename, getctime, join, exists
+
+
+# Semantic version tags for the behaviours whose OUTPUT changed relative to the
+# upstream 2021 code. Bump the relevant tag whenever a change alters the model
+# that gets written, so a saved model records which policy produced it.
+MODEL_OUTPUT_POLICIES = {
+    "sampler_seeding": "explicit-seed",     # was unseeded; fits were irreproducible
+    "training_split": "disjoint-prefix",    # was same fraction from both ends
+    "whitening": "train-only",              # held-out no longer leaks in
+    "keys_semantics": "train-list-indexed",  # 'keys' now indexes labels
+    "separate_trans_sessions": "no-drop",   # n/a-group sessions no longer dropped
+    "ar_regularization": "prior-only",      # was writing posterior into prior
+}
+
+
+def _package_git_sha(package_file):
+    """Best-effort git commit of an installed package (editable installs)."""
+    try:
+        pkg_dir = os.path.dirname(os.path.abspath(package_file))
+        return (
+            subprocess.check_output(
+                ["git", "-C", pkg_dir, "rev-parse", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        return "unknown"
+
+
+def get_pipeline_provenance():
+    """
+    Build a provenance record describing the code that produced a model file.
+
+    Returns:
+    provenance (dict): package version, git commit (best effort), write time and
+        the semantic output-policy tags in MODEL_OUTPUT_POLICIES.
+    """
+
+    try:
+        from moseq2_model import __version__ as version
+    except Exception:
+        version = "unknown"
+
+    return {
+        "package": "moseq2-model",
+        "version": version,
+        "git_sha": _package_git_sha(__file__),
+        "written": datetime.datetime.now().isoformat(),
+        "policies": dict(MODEL_OUTPUT_POLICIES),
+    }
 
 
 def load_pcs(filename, var_name="features", load_groups=False, npcs=10):
