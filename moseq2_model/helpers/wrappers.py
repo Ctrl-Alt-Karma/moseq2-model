@@ -24,6 +24,7 @@ from moseq2_model.util import (
     get_loglikelihoods,
     get_session_groupings,
     load_dict,
+    get_pipeline_provenance,
 )
 from moseq2_model.helpers.data import (
     process_indexfile,
@@ -226,6 +227,10 @@ def learn_model_wrapper(input_file, dest_file, config_data):
         "expected_states": expected_states if config_data["e_step"] else None,
         "whitening_parameters": whitening_parameters,
         "pc_score_path": os.path.abspath(input_file),
+        # Provenance: which code produced this model. Lets a downstream consumer
+        # tell a model fit before a behaviour change from one fit after it,
+        # rather than silently mixing incompatible outputs.
+        "pipeline_provenance": get_pipeline_provenance(),
     }
 
     # Save model
